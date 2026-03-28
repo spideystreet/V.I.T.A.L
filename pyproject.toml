@@ -1,0 +1,30 @@
+[project]
+name = "vital"
+version = "0.1.0"
+description = "Voice-Integrated Tracker & Adaptive Listener — Apple Watch health assistant with Voxtral voice"
+requires-python = ">=3.12"
+dependencies = [
+    "mistralai>=2.1.0",
+    "sounddevice>=0.5.0",
+    "scipy>=1.12.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+vital = "vital.main:main"
+vital-server = "vital.health_server:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
