@@ -66,17 +66,19 @@ uv run pytest
 uv run ruff check vital/
 ```
 
-## Commit authorship
+## Authorship
 
-Author is always `spideystreet <dhicham.pro@gmail.com>` unless Claude orchestrated Vibe autonomously in background.
+Git commit authorship reflects who wrote the code:
 
 | Scenario | git `--author` | Co-Authored-By |
 |----------|----------------|----------------|
-| User codes alone | spideystreet | none |
-| Claude codes directly | spideystreet | `claude-code <noreply@anthropic.com>` |
-| User delegates to Vibe | spideystreet | `Mistral Vibe <vibe@mistral.ai>` |
+| User codes alone | project owner | none |
+| Claude codes directly | project owner | `claude-code <noreply@anthropic.com>` |
+| User delegates to Vibe | project owner | `Mistral Vibe <vibe@mistral.ai>` |
 | Claude orchestrates Vibe (background) | `Mistral Vibe <vibe@mistral.ai>` | `claude-code <noreply@anthropic.com>` |
-| Mixed (Claude + Vibe both write code) | spideystreet | both co-authors |
+| Mixed (Claude + Vibe both write code) | project owner | both co-authors |
+
+Project owner identity is configured in `.claude/rules/authorship.md` (local, not committed).
 
 ## Key constraints
 

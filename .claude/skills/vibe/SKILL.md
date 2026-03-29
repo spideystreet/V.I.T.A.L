@@ -133,9 +133,4 @@ Both run in parallel, user keeps working.
 
 ## Commit authorship rules
 
-When committing work done via this skill, follow the authorship rules from CLAUDE.md:
-
-- **Claude codes directly** → author: spideystreet, co-author: `claude-code <noreply@anthropic.com>`
-- **User delegates to Vibe** → author: spideystreet, co-author: `Mistral Vibe <vibe@mistral.ai>`
-- **Claude orchestrates Vibe in background** → author: `Mistral Vibe <vibe@mistral.ai>`, co-author: `claude-code <noreply@anthropic.com>`
-- **Mixed** → author: spideystreet, both co-authors
+When committing work done via this skill, follow the authorship rules from `.claude/rules/authorship.md`.
