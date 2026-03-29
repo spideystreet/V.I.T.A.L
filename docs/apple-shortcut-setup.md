@@ -145,7 +145,7 @@ For each Find Health Samples result, use **Repeat with Each** to add entries.
 | **Get Contents of URL** | URL: `server_url` variable |
 | | Method: **POST** |
 | | Headers: `Content-Type: application/json` |
-| | Request Body: **File** → the Text/Dictionary from Step 9 |
+| | Request Body: **File** → the Dictionary from Step 9 |
 
 ---
 
