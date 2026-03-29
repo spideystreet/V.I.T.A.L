@@ -12,4 +12,5 @@ build/
 .pytest_cache/
 .mypy_cache/
 .vibe/tasks/
+.claude/rules/
 *.shortcut

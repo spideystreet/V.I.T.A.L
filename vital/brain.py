@@ -35,7 +35,9 @@ def build_system_message(hours: int = 24) -> dict:
     summary = get_summary(hours)
 
     if not summary:
-        health_context = "No health data available yet. Ask the user to sync their Apple Watch data."
+        health_context = (
+            "No health data available yet. Ask the user to sync their Apple Watch data."
+        )
     else:
         lines = []
         for metric, stats in summary.items():
@@ -43,7 +45,8 @@ def build_system_message(hours: int = 24) -> dict:
             lines.append(
                 f"- {metric}: avg={stats['avg']} {unit}, "
                 f"min={stats['min']}, max={stats['max']}, "
-                f"latest={stats['latest']} ({stats['count']} readings)"
+                f"latest={stats['latest']}"
+                f" ({stats['count']} readings)"
             )
         health_context = "\n".join(lines)
 
