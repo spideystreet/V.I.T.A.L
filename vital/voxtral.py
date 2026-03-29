@@ -43,7 +43,12 @@ def speak_streaming(client: Mistral, token_stream: Iterator[str]) -> Iterator[st
 
     def _player():
         device = int(AUDIO_OUTPUT_DEVICE) if AUDIO_OUTPUT_DEVICE else None
-        with sd.OutputStream(samplerate=TTS_SAMPLE_RATE, channels=1, dtype="float32", device=device) as stream:
+        with sd.OutputStream(
+            samplerate=TTS_SAMPLE_RATE,
+            channels=1,
+            dtype="float32",
+            device=device,
+        ) as stream:
             while True:
                 data = audio_q.get()
                 if data is None:
@@ -104,7 +109,6 @@ def _stream_tts_to_queue(text: str, audio_q: queue.Queue) -> None:
     try:
         with httpx.stream("POST", url, headers=headers, json=body, timeout=30.0) as resp:
             resp.raise_for_status()
-            buf = ""
             for line in resp.iter_lines():
                 if not line.startswith("data: "):
                     continue
