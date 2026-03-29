@@ -2,7 +2,7 @@ active_model = "devstral-2"
 system_prompt_id = "vital"
 
 [tools.bash]
-permission = "never"
+permission = "ask"
 
 [tools.read_file]
 permission = "always"
