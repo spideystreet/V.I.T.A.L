@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "httpx>=0.28.0",
     "mcp[cli]>=1.0.0",
+    "psycopg[binary]>=3.2.0",
 ]
 
 [project.scripts]
@@ -29,3 +30,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
