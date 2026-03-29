@@ -1,8 +1,10 @@
-<table align="center" border="0" cellspacing="0" cellpadding="30"><tr>
-  <td align="center"><img src="assets/mockups/apple-watch-ultra.png" alt="V.I.T.A.L" width="200"></td>
-  <td align="center" style="padding: 0;"><img src="assets/badges/separator.svg" height="80"></td>
-  <td align="center"><a href="https://mistral.ai"><img src="assets/mockups/alanxmistral.png" alt="Alan x Mistral" width="200"></a></td>
-</tr></table>
+<p align="center">
+  <img src="assets/mockups/apple-watch-ultra.png" alt="V.I.T.A.L" width="200">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/badges/separator.svg" height="80">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://mistral.ai"><img src="assets/mockups/alanxmistral.png" alt="Alan x Mistral" width="200"></a>
+</p>
 
 <h1 align="center">V.I.T.A.L</h1>
 
