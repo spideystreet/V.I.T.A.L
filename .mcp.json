@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vibe": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/spidey/Developer/git/V.I.T.A.L", "python", "-m", "mcp_vibe.server"],
+      "env": {
+        "VIBE_BIN": "/Users/spidey/.local/bin/vibe"
+      }
+    }
+  }
+}
