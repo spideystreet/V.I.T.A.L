@@ -8,8 +8,9 @@ on:
       - "docs/**"
       - "wiki/**"
       - "public/**"
-      - ".github/pull_request_template.md"
+      - ".github/**"
       - ".vibe/**"
+      - ".gitignore"
       - "LICENSE"
   pull_request:
     branches: [main]
@@ -18,8 +19,9 @@ on:
       - "docs/**"
       - "wiki/**"
       - "public/**"
-      - ".github/pull_request_template.md"
+      - ".github/**"
       - ".vibe/**"
+      - ".gitignore"
       - "LICENSE"
 
 jobs:
