@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from vital.config import (
+from backend.config import (
     DEMO_ASSISTANT_VOICE,
     DEMO_USER_VOICE,
     MISTRAL_API_KEY,
@@ -19,8 +19,8 @@ from vital.config import (
     ORANGE_DIM,
     REFRESH_FPS,
 )
-from vital.health_store import get_summary, init_db
-from vital.viz import (
+from backend.health_store import get_summary, init_db
+from backend.viz import (
     SpeakingWaveform,
     ThinkingDots,
     animate_header,
@@ -41,10 +41,15 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Demo mode: scripted conversation, both sides spoken via TTS",
     )
+    parser.add_argument(
+        "--checkup",
+        action="store_true",
+        help="Weekly vocal checkup: structured 3-question burnout ritual over 7 days",
+    )
     return parser.parse_args()
 
 
-def _get_query(text_mode: bool) -> str | None:
+def _get_query(text_mode: bool, client: Mistral | None = None) -> str | None:
     """Get user input via voice or text."""
     if text_mode:
         try:
@@ -54,8 +59,8 @@ def _get_query(text_mode: bool) -> str | None:
             return None
 
     # Voice mode
-    from vital.audio import record
-    from vital.voxtral import transcribe
+    from backend.audio import record
+    from backend.voxtral import transcribe
 
     console.print()
     console.print(f"  [{ORANGE}]listening...[/]")
@@ -64,8 +69,8 @@ def _get_query(text_mode: bool) -> str | None:
         if not audio_data:
             console.print("  [dim]no speech detected[/dim]")
             return ""
-        client = Mistral(api_key=MISTRAL_API_KEY)
-        text = transcribe(client, audio_data)
+        stt_client = client or Mistral(api_key=MISTRAL_API_KEY)
+        text = transcribe(stt_client, audio_data)
         console.print(f"  [dim]→ {text}[/dim]")
         return text
     except Exception as e:
@@ -138,7 +143,7 @@ def main():
     def _warmup():
         import queue as _q
 
-        from vital.voxtral import _stream_tts_to_queue
+        from backend.voxtral import _stream_tts_to_queue
 
         q = _q.Queue()
         _stream_tts_to_queue(".", q, voice_id=DEMO_ASSISTANT_VOICE)
@@ -158,15 +163,21 @@ def main():
     # Wait for warmup to finish before starting conversation
     warmup_t.join()
 
-    from vital.brain import build_system_message
+    from backend.brain import build_system_message
 
-    messages = [build_system_message()]
+    messages = [build_system_message(weekly_checkup=args.checkup)]
 
     if args.demo:
         _run_demo(client, messages)
     else:
         speak_mode = not args.text and not args.no_speak
-        _run_loop(client, messages, text_mode=args.text, speak_mode=speak_mode)
+        _run_loop(
+            client,
+            messages,
+            text_mode=args.text,
+            speak_mode=speak_mode,
+            weekly_checkup=args.checkup,
+        )
 
 
 # Scripted questions for the demo screencast
@@ -179,8 +190,8 @@ def _run_demo(client: Mistral, messages: list[dict]) -> None:
     """Run a fully scripted demo — no input needed, both sides speak."""
     import time
 
-    from vital.brain import build_system_message, stream_response
-    from vital.voxtral import speak_streaming, speak_text
+    from backend.brain import build_system_message, stream_response
+    from backend.voxtral import speak_streaming, speak_text
 
     for query in _DEMO_SCENARIO:
         time.sleep(2.0)
@@ -230,22 +241,29 @@ def _run_loop(
     messages: list[dict],
     text_mode: bool,
     speak_mode: bool,
+    weekly_checkup: bool = False,
 ) -> None:
     """Standard interactive conversation loop."""
-    from vital.brain import build_system_message, stream_response
+    from backend.brain import build_system_message, stream_response
 
+    # In checkup mode, kick off the ritual without waiting for user input
+    bootstrap = weekly_checkup
     while True:
-        query = _get_query(text_mode)
-        if query is None or query.lower() in ("quit", "exit", "q"):
-            console.print()
-            console.print(_SEP)
-            console.print()
-            break
-        if not query:
-            continue
+        if bootstrap:
+            query = "[CHECKUP_START]"
+            bootstrap = False
+        else:
+            query = _get_query(text_mode, client=client)
+            if query is None or query.lower() in ("quit", "exit", "q"):
+                console.print()
+                console.print(_SEP)
+                console.print()
+                break
+            if not query:
+                continue
 
         messages.append({"role": "user", "content": query})
-        messages[0] = build_system_message()
+        messages[0] = build_system_message(weekly_checkup=weekly_checkup)
 
         _show_thinking(0.6)
 
@@ -253,7 +271,7 @@ def _run_loop(
         full_text = ""
 
         if speak_mode:
-            from vital.voxtral import speak_streaming
+            from backend.voxtral import speak_streaming
 
             with Live(
                 _render_response("", speaking=True),

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
 
-from vital.config import DATABASE_URL
+from backend.config import DATABASE_URL
 
 _CREATE_METRIC_CATALOG = """
 CREATE TABLE IF NOT EXISTS metric_catalog (
@@ -50,6 +50,14 @@ _DEFAULT_METRICS = [
     ("sleep", "hours", "sleep", "Sleep duration"),
     ("sleep_deep", "hours", "sleep", "Deep sleep duration"),
     ("sleep_rem", "hours", "sleep", "REM sleep duration"),
+    ("vo2_max", "mL/kg/min", "vitals", "VO2 max (cardio fitness)"),
+    ("resting_energy", "kcal", "activity", "Resting energy burned (basal metabolism)"),
+    ("workout", "min", "activity", "Workout duration"),
+    ("stand_time", "min", "activity", "Standing time"),
+    ("mindful_minutes", "min", "activity", "Mindful / meditation sessions"),
+    ("walking_hr_avg", "bpm", "vitals", "Walking heart rate average"),
+    ("audio_exposure", "dBASPL", "environment", "Environmental audio exposure level"),
+    ("exercise_time", "min", "activity", "Apple exercise time (moderate+ activity)"),
 ]
 
 
@@ -169,6 +177,174 @@ def get_summary(hours: int = 24) -> dict:
             "latest": float(row["latest"]),
         }
         for row in rows
+    }
+
+
+def _avg_for_window(conn, metric: str, start: datetime, end: datetime | None = None) -> dict:
+    """Return {avg, count} for a metric in a time window. Shared by get_trend/compare_periods."""
+    if end is None:
+        row = conn.execute(
+            """
+            SELECT ROUND(AVG(d.value)::numeric, 1) as avg, COUNT(*) as count
+            FROM health_data d
+            JOIN metric_catalog c ON c.id = d.metric_id
+            WHERE c.name = %s AND d.recorded_at >= %s
+            """,
+            (metric, start),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT ROUND(AVG(d.value)::numeric, 1) as avg, COUNT(*) as count
+            FROM health_data d
+            JOIN metric_catalog c ON c.id = d.metric_id
+            WHERE c.name = %s AND d.recorded_at >= %s AND d.recorded_at < %s
+            """,
+            (metric, start, end),
+        ).fetchone()
+    return row
+
+
+def get_trend(metric: str, days: int = 3) -> dict:
+    """Compare the last 24h average to the previous N days average for a metric."""
+    now = datetime.now(UTC)
+    recent_start = now - timedelta(hours=24)
+    previous_start = now - timedelta(days=days)
+
+    with _connect() as conn:
+        recent = _avg_for_window(conn, metric, recent_start)
+        previous = _avg_for_window(conn, metric, previous_start, recent_start)
+
+    recent_avg = float(recent["avg"]) if recent["avg"] else None
+    previous_avg = float(previous["avg"]) if previous["avg"] else None
+
+    if recent_avg is None or previous_avg is None or previous_avg == 0:
+        return {
+            "metric": metric,
+            "recent_avg": recent_avg,
+            "previous_avg": previous_avg,
+            "direction": "unknown",
+            "change_pct": None,
+        }
+
+    change_pct = round((recent_avg - previous_avg) / previous_avg * 100, 1)
+    if change_pct > 5:
+        direction = "up"
+    elif change_pct < -5:
+        direction = "down"
+    else:
+        direction = "stable"
+
+    return {
+        "metric": metric,
+        "recent_avg": recent_avg,
+        "previous_avg": previous_avg,
+        "direction": direction,
+        "change_pct": change_pct,
+    }
+
+
+def compare_periods(
+    metric: str, period_a_hours: int, period_b_hours: int, period_b_offset_hours: int
+) -> dict:
+    """Compare two time periods for a metric.
+
+    period_a: last N hours (e.g. 24 = today)
+    period_b: N hours starting at offset (e.g. hours=24, offset=48 = two days ago)
+    """
+    now = datetime.now(UTC)
+    a_start = now - timedelta(hours=period_a_hours)
+    b_end = now - timedelta(hours=period_b_offset_hours)
+    b_start = b_end - timedelta(hours=period_b_hours)
+
+    with _connect() as conn:
+        a = _avg_for_window(conn, metric, a_start)
+        b = _avg_for_window(conn, metric, b_start, b_end)
+
+    a_avg = float(a["avg"]) if a["avg"] else None
+    b_avg = float(b["avg"]) if b["avg"] else None
+
+    return {
+        "metric": metric,
+        "period_a_avg": a_avg,
+        "period_b_avg": b_avg,
+        "period_a_label": f"last {period_a_hours}h",
+        "period_b_label": f"{period_b_offset_hours}-{period_b_offset_hours + period_b_hours}h ago",
+    }
+
+
+def get_correlation(metric_a: str, metric_b: str, days: int = 7) -> dict:
+    """Compute daily averages and simple correlation between two metrics."""
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT DATE(d.recorded_at) as day, c.name as metric,
+                   ROUND(AVG(d.value)::numeric, 2) as avg
+            FROM health_data d
+            JOIN metric_catalog c ON c.id = d.metric_id
+            WHERE c.name IN (%s, %s) AND d.recorded_at >= %s
+            GROUP BY DATE(d.recorded_at), c.name
+            ORDER BY day
+            """,
+            (metric_a, metric_b, since),
+        ).fetchall()
+
+    # Group by day
+    days_a = {}
+    days_b = {}
+    for r in rows:
+        day = str(r["day"])
+        if r["metric"] == metric_a:
+            days_a[day] = float(r["avg"])
+        else:
+            days_b[day] = float(r["avg"])
+
+    # Find common days
+    common_days = sorted(set(days_a) & set(days_b))
+    if len(common_days) < 2:
+        return {
+            "metric_a": metric_a,
+            "metric_b": metric_b,
+            "correlation": None,
+            "note": "Not enough overlapping data to compute correlation",
+            "data_points": len(common_days),
+        }
+
+    vals_a = [days_a[d] for d in common_days]
+    vals_b = [days_b[d] for d in common_days]
+
+    # Pearson correlation
+    n = len(vals_a)
+    mean_a = sum(vals_a) / n
+    mean_b = sum(vals_b) / n
+    cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(vals_a, vals_b)) / n
+    std_a = (sum((a - mean_a) ** 2 for a in vals_a) / n) ** 0.5
+    std_b = (sum((b - mean_b) ** 2 for b in vals_b) / n) ** 0.5
+
+    if std_a == 0 or std_b == 0:
+        corr = 0.0
+    else:
+        corr = round(cov / (std_a * std_b), 2)
+
+    if corr > 0.5:
+        interpretation = "strong positive correlation"
+    elif corr > 0.2:
+        interpretation = "weak positive correlation"
+    elif corr < -0.5:
+        interpretation = "strong negative correlation"
+    elif corr < -0.2:
+        interpretation = "weak negative correlation"
+    else:
+        interpretation = "no significant correlation"
+
+    return {
+        "metric_a": metric_a,
+        "metric_b": metric_b,
+        "correlation": corr,
+        "interpretation": interpretation,
+        "data_points": n,
     }
 
 

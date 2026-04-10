@@ -57,19 +57,7 @@
 - Include voice processing in the consent flow
 - Consider on-device STT as a future privacy enhancement (Apple Speech framework)
 
-#### P3. `NSAllowsArbitraryLoads: true` — no transport encryption enforcement
-
-**File:** `ios/project.yml:26`
-
-**Issue:** App Transport Security is completely disabled. All HTTP traffic (including health data in `POST /health` and voice audio) can be intercepted on the network.
-
-**RGPD impact:** Article 32 requires "appropriate technical measures" including encryption in transit. Disabling ATS violates this.
-
-**Recommendation:**
-- For hackathon (LAN demo): acceptable with explicit documentation
-- For production: enforce HTTPS, use TLS certificates, scope ATS exceptions
-
-#### P4. No data deletion mechanism
+#### P3. No data deletion mechanism
 
 **Issue:** No way for the user to delete their health data from the database. No `DELETE /health` endpoint, no "erase my data" feature.
 
@@ -77,7 +65,7 @@
 
 **Recommendation:** Add a `DELETE /health/all` endpoint and a "Delete My Data" button in the app.
 
-#### P5. No data export mechanism
+#### P4. No data export mechanism
 
 **Issue:** No way for the user to export their health data in a portable format.
 
@@ -85,7 +73,7 @@
 
 **Recommendation:** Add a `GET /health/export` endpoint returning JSON or CSV.
 
-#### P6. Health thresholds visible in system prompt
+#### P5. Health thresholds visible in system prompt
 
 **Issue:** The system prompt in `brain.py` contains hardcoded medical thresholds (HRV <30ms = "stress signal", sleep <6h = "insufficient"). These are sent to the LLM and could surface in responses as medical advice.
 
@@ -100,22 +88,19 @@ For the 2026-04-11 demo, minimum viable privacy:
 - [ ] Add a brief consent splash: "V.I.T.A.L sends your health data and voice to Mistral AI for analysis. No data is stored on Mistral's servers beyond processing." (verify with Mistral's ToS)
 - [ ] Document that this is a demo/prototype — not for production health use
 - [ ] Ensure the LLM always says "consult a professional" for medical questions (already in prompt)
-- [ ] Keep `NSAllowsArbitraryLoads` but document it as hackathon-only
+- [ ] Ensure HTTPS is used for all backend communication
 
 ## Production Readiness Checklist
 
-For eventual App Store / public release:
+For eventual public release:
 
-- [ ] Privacy policy document (website-hosted URL required for App Store)
+- [ ] Privacy policy document
 - [ ] DPA with Mistral AI
 - [ ] Explicit consent flow with granular toggles (health data, voice, analytics)
 - [ ] HTTPS everywhere (TLS certificates for backend)
-- [ ] Scoped ATS exceptions (no blanket `NSAllowsArbitraryLoads`)
 - [ ] Data deletion endpoint + UI
 - [ ] Data export endpoint (JSON/CSV)
 - [ ] Data retention policy (auto-purge after N days?)
-- [ ] HealthKit usage descriptions in project.yml
-- [ ] On-device STT option (Apple Speech) for privacy-conscious users
 - [ ] Audit log for data access
 - [ ] Rate limiting on health data endpoints
 - [ ] Authentication (current setup has zero auth — anyone on the network can POST health data)

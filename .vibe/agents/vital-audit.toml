@@ -1,0 +1,20 @@
+active_model = "devstral-2"
+system_prompt_id = "vital"
+
+[tools.bash]
+permission = "always"
+
+[tools.read_file]
+permission = "always"
+
+[tools.write_file]
+permission = "ask"
+
+[tools.search_replace]
+permission = "ask"
+
+[tools.grep]
+permission = "always"
+
+[tools.todo]
+permission = "never"

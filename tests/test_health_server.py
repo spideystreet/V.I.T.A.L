@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from vital.health_server import app
-from vital.health_store import insert_metrics
+from backend.health_server import app
+from backend.health_store import insert_metrics
 
 
 @pytest.fixture()

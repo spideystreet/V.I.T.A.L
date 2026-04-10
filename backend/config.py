@@ -11,6 +11,7 @@ MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
 
 # --- Models ---
 STT_MODEL = "voxtral-mini-transcribe-2507"
+REALTIME_STT_MODEL = "voxtral-mini-transcribe-realtime-2602"
 LLM_MODEL = "mistral-small-latest"
 TTS_MODEL = "voxtral-mini-tts-2603"
 
@@ -19,6 +20,7 @@ SAMPLE_RATE = 16_000  # Voxtral STT requirement
 TTS_SAMPLE_RATE = 24_000  # Voxtral TTS output
 SILENCE_THRESHOLD = 500
 SILENCE_DURATION = 1.5  # seconds
+STT_LANGUAGE = os.environ.get("STT_LANGUAGE", "fr")
 MAX_RECORD_SECONDS = 30
 AUDIO_OUTPUT_DEVICE = os.environ.get("AUDIO_OUTPUT_DEVICE")
 TTS_VOICE_ID = os.environ.get("TTS_VOICE_ID", "")

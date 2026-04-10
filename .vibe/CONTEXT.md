@@ -2,27 +2,29 @@
 
 ## Project overview
 
-V.I.T.A.L (Voice-Integrated Tracker & Adaptive Listener) is a CLI Python health
-assistant that receives Apple Watch data and provides voice-based health
-conversations using Mistral LLM + Voxtral STT/TTS.
+V.I.T.A.L (Voice-Integrated Tracker & Adaptive Listener) is a vocal health checkup
+that crosses what the user feels (voice) with what their body measures (Apple Watch /
+HealthKit), to detect burnout before it happens. Python/FastAPI backend + native Swift
+web app. Uses Mistral Small 4 (with 6 tools) + Voxtral STT/TTS.
 
 ## Architecture
 
 ```
-iPhone Shortcut (HealthKit) → POST /health → health_server.py → SQLite
-CLI: audio.py → voxtral.py (STT) → brain.py (LLM) → voxtral.py (TTS) → viz.py
+Watch (mic + HealthKit) → iPhone (WatchConnectivity) → Backend (FastAPI)
+Backend: STT → brain.py (LLM + 6 tools) → TTS → audio response
 ```
 
 ## Key files
 
-- `vital/config.py` — env vars, constants, model IDs
-- `vital/health_store.py` — SQLite storage
-- `vital/health_server.py` — FastAPI receiver
-- `vital/brain.py` — LLM system prompt + health context
-- `vital/voxtral.py` — STT + streaming TTS
-- `vital/audio.py` — mic recording
-- `vital/viz.py` — terminal waveforms (Rich)
-- `vital/main.py` — CLI orchestrator
+- `backend/config.py` — env vars, constants, model IDs
+- `backend/health_store.py` — PostgreSQL storage (20 metrics + trend/correlation queries)
+- `backend/health_server.py` — FastAPI receiver
+- `backend/brain.py` — LLM system prompt (stress/burnout oriented), tool use (6 tools), health context
+- `backend/voxtral.py` — STT + streaming TTS
+- `backend/audio.py` — mic recording
+- `backend/viz.py` — terminal waveforms (Rich)
+- `backend/main.py` — CLI orchestrator
+- `backend/seed_data.py` — test data generator (healthy/stressed/athlete/sleep_deprived)
 
 ## Constraints
 
@@ -30,7 +32,7 @@ CLI: audio.py → voxtral.py (STT) → brain.py (LLM) → voxtral.py (TTS) → v
 - No hardcoded secrets — env vars only
 - Code and comments in English
 - Conventional commits
-- Terminal aesthetic: Mistral orange #ff7000
+- Vibe scope: Python only (docs, tests, audit/refactor). No Swift.
 
 ## How tasks work
 

@@ -5,30 +5,6 @@
 ## System Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Apple Watch Ultra                        │
-│  (placeholder — no mic/HealthKit/WCSession implemented yet) │
-└─────────────────────────────────────────────────────────────┘
-                          │ (future: WatchConnectivity)
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    iPhone App (Swift)                        │
-│                                                             │
-│  VitalApp.swift ─► ContentView ─► VoiceLoop                │
-│                                    │                        │
-│  ┌──────────────┐  ┌────────────┐  │  ┌──────────────────┐ │
-│  │ captureEngine│  │playbackEng.│  │  │ URLSessionWS     │ │
-│  │ (mic→PCM16)  │  │(PCM32→spkr)│  │  │ (bidirectional)  │ │
-│  └──────┬───────┘  └─────▲──────┘  │  └───────┬──────────┘ │
-│         │                │         │          │             │
-│         │    VAD (RMS + silence)   │          │             │
-│         └──────────────────────────┘          │             │
-│                                               │             │
-│  Models: HealthMetric, APIModels,             │             │
-│          Conversation*, UserProfile*          │             │
-│          (* = dead code, unused)              │             │
-└───────────────────────────────────────────────┼─────────────┘
-                                                │
                         WebSocket ws://host:8420/voice/ws
                         Binary: PCM16 LE @16kHz (up)
                         Binary: Float32 LE @24kHz (down)
@@ -89,8 +65,7 @@
 ## Audio Format Chain
 
 ```
-iPhone mic (hardware: ~48kHz Float32 stereo)
-  → AVAudioConverter → PCM Int16 mono @16kHz (interleaved)
+Client mic → PCM Int16 mono @16kHz
   → WebSocket binary frame
   → Mistral Realtime STT (voxtral-mini-transcribe-realtime-2602)
   → transcription events (partial + done)
@@ -98,28 +73,8 @@ iPhone mic (hardware: ~48kHz Float32 stereo)
   → voxtral.py stream_voice_events() → clause-based sentence chunking
   → Mistral TTS (voxtral-mini-tts-2603) → SSE → base64 PCM Float32 @24kHz
   → WebSocket binary frame
-  → AVAudioPCMBuffer Float32 mono @24kHz
-  → AVAudioPlayerNode → AVAudioEngine → speaker
+  → Client playback
 ```
-
-## State Machine (WebSocket Turn)
-
-```
-IDLE ──[start()]──► CONNECTING
-  └──[WS open + mic ready]──► LISTENING
-       │                          ▲
-       │ (user speaks)            │ (all buffers played + server said listening)
-       ▼                          │
-  [VAD silence 1.5s]             │
-       │                          │
-       ▼                          │
-  THINKING ──[first audio]──► SPEAKING ──[stream done]──┘
-```
-
-Client-side gates for SPEAKING → LISTENING:
-1. `serverSaidListening == true` (server finished streaming)
-2. `pendingBufferCount <= 0` (all audio buffers consumed by AVAudioPlayerNode)
-3. Grace period: `lastBufferFrameCount / 24000 + 0.15s`
 
 ## Key Design Decisions
 
@@ -130,46 +85,27 @@ Client-side gates for SPEAKING → LISTENING:
 | Clause-based TTS chunking | Fire TTS on `[,;:.!?]\s` — cuts 200-400ms dead air vs sentence-end only |
 | TTS httpx (not SDK) | Mistral Python SDK doesn't expose streaming TTS; raw SSE needed |
 | System message cached per WS session | Avoid DB hit per turn; health data is stale but acceptable for ~5min sessions |
-| Separate capture/playback engines | Prevent mic picking up speaker output via `.voiceChat` mode |
 | Drop-oldest audio queue | Keep audio fresh; stale chunks degrade STT accuracy |
 
 ## File Inventory
-
-### iOS (Swift)
-
-| File | Lines | Role |
-|------|-------|------|
-| `VitalApp/ContentView.swift` | ~727 | **Entire app**: VoiceLoop, views, audio, WS, VAD |
-| `VitalApp/VitalApp.swift` | ~8 | Entry point |
-| `Vital/Models/HealthMetric.swift` | ~50 | 20-metric type catalog |
-| `Vital/Models/APIModels.swift` | ~40 | REST API contracts |
-| `Vital/Models/Conversation.swift` | ~15 | Dead code |
-| `Vital/Models/UserProfile.swift` | ~20 | Dead code |
-| `VitalWatch/VitalWatchApp.swift` | ~8 | Watch entry point |
-| `VitalWatch/WatchContentView.swift` | ~25 | Placeholder tap counter |
-| `project.yml` | ~40 | XcodeGen config |
 
 ### Python Backend
 
 | File | Lines | Role |
 |------|-------|------|
-| `vital/health_server.py` | 191 | FastAPI routes, uvicorn entry |
-| `vital/voice_ws.py` | 210 | Realtime WS pipeline |
-| `vital/voxtral.py` | 376 | STT + TTS + streaming |
-| `vital/brain.py` | ~400 | System prompt, tools, LLM |
-| `vital/health_store.py` | ~200 | PostgreSQL schema + queries |
-| `vital/config.py` | ~60 | Constants, env vars |
-| `vital/main.py` | ~200 | CLI entry |
-| `vital/nudge.py` | 72 | Daily nudge detector |
-| `vital/berries.py` | 99 | Reward ledger |
-| `vital/seed_data.py` | 155 | Test data generator |
-| `vital/audio.py` | 53 | CLI mic recording |
-| `vital/viz.py` | 161 | Terminal waveforms |
+| `backend/health_server.py` | 191 | FastAPI routes, uvicorn entry |
+| `backend/voice_ws.py` | 210 | Realtime WS pipeline |
+| `backend/voxtral.py` | 376 | STT + TTS + streaming |
+| `backend/brain.py` | ~400 | System prompt, tools, LLM |
+| `backend/health_store.py` | ~200 | PostgreSQL schema + queries |
+| `backend/config.py` | ~60 | Constants, env vars |
+| `backend/main.py` | ~200 | CLI entry |
+| `backend/nudge.py` | 72 | Daily nudge detector |
+| `backend/berries.py` | 99 | Reward ledger |
+| `backend/seed_data.py` | 155 | Test data generator |
+| `backend/audio.py` | 53 | CLI mic recording |
+| `backend/viz.py` | 161 | Terminal waveforms |
 
 ## Missing Layers (Declared but Not Implemented)
 
-1. **HealthDataManager** — no Swift HealthKit code exists. No `HKHealthStore`, no authorization, no queries.
-2. **WatchConnectivity** — `WCSession` never initialized on either target. Watch cannot talk to iPhone.
-3. **HTTP client for POST /health** — `HealthPayload` model exists but no code sends it from iOS.
-4. **Watch audio** — no mic access, no `WKExtendedRuntimeSession`, no recording.
-5. **Streaming tool use** — `stream_response()` doesn't pass `tools=TOOLS`; LLM tools only work via non-streaming `chat_with_tools()`.
+1. **Streaming tool use** — `stream_response()` doesn't pass `tools=TOOLS`; LLM tools only work via non-streaming `chat_with_tools()`.

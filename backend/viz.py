@@ -6,7 +6,7 @@ import time
 from rich.console import Console
 from rich.text import Text
 
-from vital.config import ORANGE, ORANGE_DARK, ORANGE_DIM
+from backend.config import ORANGE, ORANGE_DARK, ORANGE_DIM
 
 BLOCK_CHARS = " ▁▂▃▄▅▆▇█"
 
@@ -96,7 +96,7 @@ class SpeakingWaveform:
     """Rich renderable for audio-reactive waveform."""
 
     def __rich_console__(self, console, options):
-        from vital.voxtral import audio_level
+        from backend.voxtral import audio_level
 
         t = time.monotonic()
         width = min(options.max_width - 4, 60)

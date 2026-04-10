@@ -1,10 +1,9 @@
-# Mistral Vibe config for V.I.T.A.L
-# This agent handles peripheral tasks delegated by the main dev (Claude Code)
-
 [project]
 name = "vital"
-description = "Voice-Integrated Tracker & Adaptive Listener — Apple Watch health assistant"
+description = "Vocal health checkup for burnout prevention — Apple Watch + Mistral Small 4"
 
 [agent]
-# Keep tasks scoped and focused
 max_turns = 15
+skill_paths = [
+    ".vibe/skills",
+]

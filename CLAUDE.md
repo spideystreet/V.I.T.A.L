@@ -2,36 +2,67 @@
 
 ## What is this
 
-A CLI Python health assistant that:
-1. Receives Apple Watch data via Apple Shortcuts → POST JSON → local FastAPI server → PostgreSQL
-2. Uses Mistral LLM with health context for conversational analysis
-3. Supports voice interaction via Voxtral STT/TTS with streaming playback
-4. Displays health data + waveform viz in terminal (Mistral orange aesthetic)
+A vocal health checkup for stress and burnout prevention that:
+1. Reads health data from Apple Watch via HealthKit (20 metrics)
+2. Uses Mistral Small 4 LLM with 6 tools for conversational analysis
+3. Crosses subjective well-being (voice) with objective biometrics to detect burnout
+4. Runs a **weekly vocal checkup ritual** (3 structured questions × 7-day biometric trends → score + action). See `wiki/concepts/weekly-vocal-checkup.md`.
+5. Sends **biometric-triggered daily nudges** (only when stress signals warrant) via `vital-nudge`.
+6. Tracks engagement via **Alan Play berries** — verifiable rewards only (`backend/berries.py`).
+7. Web app (frontend/) with Python/FastAPI backend
 
 ## Architecture
 
 ```
-iPhone Shortcut (HealthKit) → POST /health → health_server.py → PostgreSQL (health_store.py)
-                                                                      ↓
-CLI: audio.py → voxtral.py (STT) → brain.py (LLM + health ctx) → voxtral.py (TTS) → viz.py
-                                                                      ↓
-                                                              main.py (orchestrator)
+Browser (mic + UI) → frontend/ (web app)
+                          ↓
+                    FastAPI backend (Python)
+                          ↓
+              Mistral LLM + Voxtral STT/TTS → SSE stream → frontend
+                          ↓
+              health_store.py → PostgreSQL (Thryve + HealthKit data)
 ```
 
 ## Project layout
 
 ```
-vital/
-├── main.py          # CLI entry point, conversation loop
-├── config.py        # Env vars, constants, model IDs
-├── audio.py         # Microphone recording, silence detection
-├── voxtral.py       # STT transcription + streaming TTS
-├── brain.py         # System prompt, health context, LLM streaming
-├── viz.py           # Terminal waveforms, health banner
-├── health_server.py # FastAPI endpoint for Apple Shortcuts
-└── health_store.py  # PostgreSQL storage and queries
-tests/
+backend/                     # Python backend + CLI
+├── main.py                  # CLI entry point, conversation loop
+├── config.py                # Env vars, constants, model IDs
+├── audio.py                 # Microphone recording, silence detection
+├── voxtral.py               # STT transcription + streaming TTS
+├── brain.py                 # System prompt, health context, LLM tool use
+├── viz.py                   # Terminal waveforms, health banner
+├── health_server.py         # FastAPI endpoint
+├── health_store.py          # PostgreSQL storage and queries
+├── nudge.py                 # Daily biometric-triggered nudge detector
+├── berries.py               # Alan Play berries ledger (verifiable rewards)
+├── thryve_mcp.py            # Thryve MCP server (dev tooling)
+└── seed_data.py             # Test data generator (4 scenarios)
+frontend/                    # Web app (team builds during hackathon)
+tests/                       # Python tests
 ```
+
+## LLM Tool Use
+
+brain.py exposes 6 tools to Mistral Small 4 via function calling:
+
+| Tool | Purpose |
+|------|---------|
+| `get_health_summary(hours)` | Aggregated metrics over a time window |
+| `get_latest_readings(metric, limit)` | N most recent raw readings |
+| `get_health_trend(metric, days)` | Trend comparison (last 24h vs previous days) |
+| `compare_periods(metric, ...)` | Compare two time periods |
+| `get_correlation(metric_a, metric_b, days)` | Pearson correlation between two metrics |
+| `book_consultation(specialty, urgency, reason)` | Book a health professional (simulated for demo) |
+
+## Health Metrics (20)
+
+**Vitals (8):** heart_rate, resting_hr, hrv, spo2, respiratory_rate, wrist_temperature, vo2_max, walking_hr_avg
+**Activity (7):** steps, active_calories, resting_energy, distance, workout, stand_time, exercise_time
+**Sleep (3):** sleep, sleep_deep, sleep_rem
+**Environment (1):** audio_exposure
+**Mindfulness (1):** mindful_minutes
 
 ## Commit scopes
 
@@ -46,6 +77,9 @@ tests/
 | `store` | health_store.py, PostgreSQL |
 | `config` | config.py, env vars |
 | `cli` | main.py, arg parsing |
+| `nudge` | nudge.py, daily biometric nudge detection |
+| `berries` | berries.py, Alan Play rewards ledger |
+| `front` | frontend/ web app |
 
 ## Commands
 
@@ -56,6 +90,12 @@ uv run vital
 # Run the CLI (text mode)
 uv run vital --text
 
+# Run the weekly vocal checkup ritual
+uv run vital --checkup
+
+# Run the daily biometric nudge detector (cron / Shortcut hook)
+uv run vital-nudge
+
 # Run the health data server
 uv run vital-server
 
@@ -63,7 +103,7 @@ uv run vital-server
 uv run pytest
 
 # Lint
-uv run ruff check vital/
+uv run ruff check backend/
 ```
 
 ## Authorship

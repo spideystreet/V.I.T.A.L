@@ -7,8 +7,8 @@ import numpy as np
 import sounddevice as sd
 from rich.live import Live
 
-from vital.config import MAX_RECORD_SECONDS, SAMPLE_RATE, SILENCE_DURATION, SILENCE_THRESHOLD
-from vital.viz import render_listening
+from backend.config import MAX_RECORD_SECONDS, SAMPLE_RATE, SILENCE_DURATION, SILENCE_THRESHOLD
+from backend.viz import render_listening
 
 
 def record() -> bytes:
