@@ -25,7 +25,6 @@ frontend/.env
 .firecrawl/
 
 # ── Data ────────────────────────────────────────────────
-data/
 
 # ── Tooling / internal ─────────────────────────────────
 .vibe/tasks/
