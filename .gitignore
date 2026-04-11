@@ -15,6 +15,7 @@ build/
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+mobile/.env
 
 # ── Environment & secrets ───────────────────────────────
 .env
@@ -54,3 +55,4 @@ public/models/*
 !public/models/mistral-small.png
 !public/models/voxtral.png
 !public/models/devstral.png
+concepts/
