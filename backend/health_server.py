@@ -76,6 +76,25 @@ PATIENTS = [
 _PATIENTS_BY_ID: dict[str, dict] = {p["id"]: p for p in PATIENTS}
 
 # ---------------------------------------------------------------------------
+# Notification broadcast — in-process pub/sub for Surface 3
+# ---------------------------------------------------------------------------
+
+_notification_subscribers: set[asyncio.Queue] = set()
+
+
+async def _broadcast_notification(payload: dict) -> None:
+    """Push a notification payload to every subscribed SSE stream."""
+    dead: list[asyncio.Queue] = []
+    for queue in _notification_subscribers:
+        try:
+            queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            dead.append(queue)
+    for q in dead:
+        _notification_subscribers.discard(q)
+
+
+# ---------------------------------------------------------------------------
 # Session management (in-memory)
 # ---------------------------------------------------------------------------
 
@@ -547,6 +566,63 @@ async def get_dashboard(patient_id: str) -> dict:
 
     payload = await _coach.generate_dashboard(client, patient_ctx)
     return payload.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Surface 3 — notification SSE stream + dev trigger
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/notifications/stream")
+async def notifications_stream() -> StreamingResponse:
+    """Long-lived SSE stream — frontend subscribes once and receives every nudge."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+    _notification_subscribers.add(queue)
+
+    async def _reader():
+        try:
+            yield "event: ready\ndata: {}\n\n"
+            while True:
+                payload = await queue.get()
+                yield f"event: notification\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        finally:
+            _notification_subscribers.discard(queue)
+
+    return StreamingResponse(_reader(), media_type="text/event-stream")
+
+
+class FireNotificationRequest(BaseModel):
+    patient_id: str
+    metric: str
+    value: float
+
+
+@app.post("/dev/fire-notification")
+async def dev_fire_notification(req: FireNotificationRequest) -> dict:
+    """DEV ONLY — manually trigger a notification for the demo."""
+    patient = _PATIENTS_BY_ID.get(req.patient_id)
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Unknown patient")
+
+    patient_ctx = PatientContext(
+        token=patient.get("token", patient["id"]),
+        name=patient["name"],
+        age=patient.get("age"),
+    )
+
+    client = Mistral(api_key=MISTRAL_API_KEY)
+
+    from backend import nudge as _nudge
+
+    message = await _nudge.fire_manual(client, patient_ctx, req.metric, req.value)
+    if message is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No baseline stored for metric '{req.metric}' — cannot fire",
+        )
+
+    await _broadcast_notification(message.to_dict())
+    return {"fired": True, "message": message.to_dict()}
 
 
 # ---------------------------------------------------------------------------
