@@ -8,41 +8,204 @@ import { API_BASE_URL } from './constants/config';
 
 const PATIENT_ID = 'patient-1';
 
-// ─── Onboarding ───────────────────────────────────────────────────────────────
+// ─── Splash ───────────────────────────────────────────────────────────────────
 
-const STEPS = [
-  { emoji: '👋', title: 'Bienvenue sur VITAL', desc: "Ton assistant santé vocal. On analyse ta voix et tes données biométriques pour détecter le burnout avant qu'il arrive." },
-  { emoji: '🎙', title: 'Parle, on écoute', desc: '3 questions. 3 minutes. VITAL croise ta réponse vocale avec tes données de sommeil, rythme cardiaque et stress.' },
-  { emoji: '📊', title: 'Tes données, ton bord', desc: 'Toutes tes métriques santé au même endroit. Tendances sur 7 jours, alertes biométriques, score de récupération.' },
-  { emoji: '🔔', title: 'Des nudges, pas du bruit', desc: "VITAL t'envoie une notification uniquement quand tes signaux biométriques le justifient." },
-];
+function OnboardingIntro({ onDone }: { onDone: () => void }) {
+  return (
+    <SafeAreaView style={styles.splashScreen}>
+      <View style={styles.splashTop}>
+        <Text style={styles.splashLogo}>VITAL</Text>
+        <Text style={styles.splashTagline}>
+          Ton corps parle.{'\n'}On traduit.
+        </Text>
+        <Text style={styles.splashSub}>
+          Voix · Biométrie · Burnout — détecté avant qu'il arrive.
+        </Text>
+      </View>
 
-function Onboarding({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState(0);
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+      <View style={styles.splashBottom}>
+        <Pressable style={({ pressed }) => [styles.splashBtn, pressed && { opacity: 0.85 }]} onPress={onDone}>
+          <Text style={styles.splashBtnText}>Commencer</Text>
+        </Pressable>
+        <Text style={styles.splashLegal}>Tes données restent sur ton appareil.</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ─── Voice Intake ──────────────────────────────────────────────────────────────
+
+type IntakeField = { key: string; label: string; icon: string; value: string | null };
+
+const FIELD_META: Record<string, { label: string; icon: string }> = {
+  first_name:  { label: 'Prénom',     icon: '👤' },
+  last_name:   { label: 'Nom',        icon: '👤' },
+  age:         { label: 'Âge',        icon: '🎂' },
+  sex:         { label: 'Sexe',       icon: '⚥'  },
+  weight_kg:   { label: 'Poids',      icon: '⚖️' },
+  height_cm:   { label: 'Taille',     icon: '📏' },
+};
+
+function formatValue(key: string, value: string | number | null): string {
+  if (value === null || value === undefined) return '—';
+  if (key === 'weight_kg') return `${value} kg`;
+  if (key === 'height_cm') return `${value} cm`;
+  if (key === 'age') return `${value} ans`;
+  if (key === 'sex') {
+    const map: Record<string, string> = { male: 'Homme', female: 'Femme', other: 'Autre' };
+    return map[String(value)] ?? String(value);
+  }
+  return String(value);
+}
+
+function normalizeForm(data: any): IntakeField[] {
+  // Handle {key: value} object form
+  const formObj: Record<string, any> = data?.form ?? data ?? {};
+  return Object.keys(FIELD_META).map((key) => ({
+    key,
+    ...FIELD_META[key],
+    value: formObj[key] != null ? formatValue(key, formObj[key]) : null,
+  }));
+}
+
+function VoiceIntake({ onDone }: { onDone: (firstName: string) => void }) {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [fields, setFields] = useState<IntakeField[]>(
+    Object.keys(FIELD_META).map((key) => ({ key, ...FIELD_META[key], value: null }))
+  );
+  const [phase, setPhase] = useState<'init' | 'ready' | 'recording' | 'processing' | 'error'>('init');
+  const [transcript, setTranscript] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const recordingRef = useRef<Audio.Recording | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/intake/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patient_id: PATIENT_ID }),
+        });
+        const data = await res.json();
+        setSessionId(data.session_id);
+        if (data.form) setFields(normalizeForm(data));
+        setPhase('ready');
+      } catch (e: any) {
+        setErrorMsg(e.message);
+        setPhase('error');
+      }
+    })();
+  }, []);
+
+  async function onPressIn() {
+    if (phase !== 'ready') return;
+    try {
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setPhase('recording');
+    } catch (e: any) { setErrorMsg(e.message); setPhase('error'); }
+  }
+
+  async function onPressOut() {
+    if (phase !== 'recording' || !recordingRef.current || !sessionId) return;
+    setPhase('processing');
+    try {
+      const rec = recordingRef.current;
+      recordingRef.current = null;
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI()!;
+
+      const form = new FormData();
+      form.append('audio', { uri, name: 'intake.m4a', type: 'audio/m4a' } as any);
+
+      const res = await fetch(`${API_BASE_URL}/api/intake/audio?session_id=${sessionId}`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (data.transcript) setTranscript(data.transcript);
+      if (data.form) setFields(normalizeForm(data));
+      setPhase('ready');
+    } catch (e: any) { setErrorMsg(e.message); setPhase('error'); }
+  }
+
+  async function finalize() {
+    if (!sessionId) return;
+    setPhase('processing');
+    try {
+      await fetch(`${API_BASE_URL}/api/intake/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      const firstName = fields.find((f) => f.key === 'first_name')?.value ?? 'toi';
+      onDone(firstName);
+    } catch (e: any) { setErrorMsg(e.message); setPhase('error'); }
+  }
+
+  const filledCount = fields.filter((f) => f.value !== null).length;
+  const canConfirm = fields.find((f) => f.key === 'first_name')?.value !== null;
+  const isRecording = phase === 'recording';
+  const isProcessing = phase === 'processing' || phase === 'init';
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.dots}>
-        {STEPS.map((_, i) => (
-          <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
+    <SafeAreaView style={styles.intakeScreen}>
+      <Text style={styles.intakeTitle}>Parle-nous de toi</Text>
+      <Text style={styles.intakeSub}>
+        {phase === 'init' ? 'Connexion…' :
+         isRecording ? '🎙 Parle, je t\'écoute…' :
+         phase === 'processing' ? 'Analyse en cours…' :
+         filledCount === 0 ? 'Maintiens le bouton et présente-toi' :
+         `${filledCount}/${fields.length} informations recueillies`}
+      </Text>
+
+      {/* Field preview */}
+      <View style={styles.intakeGrid}>
+        {fields.map((f) => (
+          <View key={f.key} style={[styles.intakeField, f.value !== null && styles.intakeFieldFilled]}>
+            <Text style={styles.intakeFieldIcon}>{f.icon}</Text>
+            <Text style={styles.intakeFieldLabel}>{f.label}</Text>
+            <Text style={[styles.intakeFieldValue, f.value === null && styles.intakeFieldEmpty]}>
+              {f.value ?? '—'}
+            </Text>
+          </View>
         ))}
       </View>
-      <Text style={styles.emoji}>{current.emoji}</Text>
-      <Text style={styles.h1}>{current.title}</Text>
-      <Text style={styles.muted}>{current.desc}</Text>
-      <View style={styles.row}>
-        {step > 0 && (
-          <Pressable style={styles.btnGhost} onPress={() => setStep(step - 1)}>
-            <Text style={styles.btnGhostText}>Retour</Text>
-          </Pressable>
-        )}
-        <Pressable style={[styles.btn, step === 0 && { flex: 1 }]} onPress={isLast ? onDone : () => setStep(step + 1)}>
-          <Text style={styles.btnText}>{isLast ? "C'est parti →" : 'Suivant'}</Text>
+
+      {transcript !== '' && (
+        <Text style={styles.intakeTranscript}>« {transcript} »</Text>
+      )}
+
+      {/* Hold-to-record button */}
+      {!isProcessing && (
+        <Pressable
+          style={[styles.intakeMic, isRecording && styles.intakeMicActive]}
+          onPressIn={onPressIn}
+          onPressOut={onPressOut}
+        >
+          {isRecording
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Text style={styles.intakeMicIcon}>🎙</Text>}
+          <Text style={styles.intakeMicLabel}>
+            {isRecording ? 'Relâche pour analyser' : 'Maintenir pour parler'}
+          </Text>
         </Pressable>
-      </View>
-    </View>
+      )}
+
+      {isProcessing && <ActivityIndicator color="#6366f1" size="large" />}
+
+      {phase === 'error' && (
+        <Text style={styles.intakeError}>{errorMsg}</Text>
+      )}
+
+      {canConfirm && !isProcessing && (
+        <Pressable style={styles.btn} onPress={finalize}>
+          <Text style={styles.btnText}>Confirmer →</Text>
+        </Pressable>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -133,7 +296,7 @@ function UploadScreen({ onSuccess, onCancel }: { onSuccess: () => void; onCancel
   );
 }
 
-function Dashboard({ onMetricPress }: { onMetricPress: (label: string, value: string, unit: string) => void }) {
+function Dashboard({ onMetricPress, userName }: { onMetricPress: (label: string, value: string, unit: string) => void; userName?: string }) {
   const [bloodTestStatus, setBloodTestStatus] = useState<BloodTestStatus>('idle');
   const [showUpload, setShowUpload] = useState(false);
 
@@ -149,7 +312,7 @@ function Dashboard({ onMetricPress }: { onMetricPress: (label: string, value: st
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
       <ScrollView contentContainerStyle={styles.dashContent}>
-        <Text style={styles.greeting}>Bonjour Malik 👋</Text>
+        <Text style={styles.greeting}>Bonjour {userName || 'toi'} 👋</Text>
         <View style={styles.insightBox}>
           <Text style={styles.insightText}>😴 Vous avez mal dormi cette nuit. Votre HRV est en baisse et votre niveau de stress est élevé.</Text>
         </View>
@@ -352,11 +515,13 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [onboarded, setOnboarded] = useState(false);
+  const [phase, setPhase] = useState<'intro' | 'intake' | 'main'>('intro');
+  const [userName, setUserName] = useState('');
   const [tab, setTab] = useState<Tab>('dashboard');
   const [pendingContext, setPendingContext] = useState<string | null>(null);
 
-  if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />;
+  if (phase === 'intro') return <OnboardingIntro onDone={() => setPhase('intake')} />;
+  if (phase === 'intake') return <VoiceIntake onDone={(name) => { setUserName(name); setPhase('main'); }} />;
 
   function handleMetricPress(label: string, value: string, unit: string) {
     const msg = `Mon score ${label} est à ${value}${unit ? ' ' + unit : ''}. Qu'est-ce que ça indique pour ma santé ?`;
@@ -367,7 +532,7 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
       <View style={{ flex: 1, display: tab === 'dashboard' ? 'flex' : 'none' }}>
-        <Dashboard onMetricPress={handleMetricPress} />
+        <Dashboard onMetricPress={handleMetricPress} userName={userName} />
       </View>
       <View style={{ flex: 1, display: tab === 'chat' ? 'flex' : 'none' }}>
         <Chat pendingContext={pendingContext} onContextConsumed={() => setPendingContext(null)} />
@@ -382,18 +547,23 @@ export default function App() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0f0f0f', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 20 },
 
-  // Onboarding
-  dots: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2a2a2a' },
-  dotActive: { backgroundColor: '#6366f1', width: 24 },
-  emoji: { fontSize: 64 },
-  h1: { fontSize: 28, fontWeight: '800', color: '#fff', textAlign: 'center' },
-  muted: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 24 },
-  row: { flexDirection: 'row', gap: 12, width: '100%', marginTop: 8 },
-  btn: { flex: 1, backgroundColor: '#6366f1', borderRadius: 14, paddingVertical: 18, alignItems: 'center' },
+  // Splash
+  splashScreen: { flex: 1, backgroundColor: '#0a0a0f', justifyContent: 'space-between', paddingHorizontal: 32, paddingTop: 80, paddingBottom: 48 },
+  splashTop: { gap: 20 },
+  splashLogo: { fontSize: 13, fontWeight: '800', color: '#6366f1', letterSpacing: 6, textTransform: 'uppercase' },
+  splashTagline: { fontSize: 42, fontWeight: '800', color: '#fff', lineHeight: 50 },
+  splashSub: { fontSize: 15, color: '#555', lineHeight: 24, marginTop: 4 },
+  splashBottom: { gap: 14 },
+  splashBtn: { backgroundColor: '#6366f1', borderRadius: 18, paddingVertical: 20, alignItems: 'center' },
+  splashBtnText: { color: '#fff', fontWeight: '700', fontSize: 17, letterSpacing: 0.3 },
+  splashLegal: { textAlign: 'center', fontSize: 12, color: '#333' },
+
+  // Shared buttons
+  btn: { backgroundColor: '#6366f1', borderRadius: 14, paddingVertical: 18, alignItems: 'center', width: '100%' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   btnGhost: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 14, paddingVertical: 18, alignItems: 'center' },
   btnGhostText: { color: '#555', fontWeight: '600', fontSize: 16 },
+  row: { flexDirection: 'row', gap: 12, width: '100%', marginTop: 8 },
 
   // Dashboard
   dashContent: { padding: 24, gap: 16, paddingBottom: 40 },
@@ -428,6 +598,23 @@ const styles = StyleSheet.create({
   uploadCancelText: { color: '#555', fontSize: 14 },
   uploadError: { backgroundColor: '#2d1515', borderRadius: 10, padding: 12, width: '100%' },
   uploadErrorText: { color: '#f87171', fontSize: 13 },
+
+  intakeScreen: { flex: 1, backgroundColor: '#0f0f0f', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 },
+  intakeTitle: { fontSize: 28, fontWeight: '800', color: '#fff', textAlign: 'center' },
+  intakeSub: { fontSize: 14, color: '#666', textAlign: 'center' },
+  intakeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center', width: '100%' },
+  intakeField: { backgroundColor: '#1a1a1a', borderRadius: 14, padding: 14, width: '46%', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#222' },
+  intakeFieldFilled: { borderColor: '#6366f1', backgroundColor: '#16162a' },
+  intakeFieldIcon: { fontSize: 22 },
+  intakeFieldLabel: { fontSize: 11, color: '#555', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  intakeFieldValue: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  intakeFieldEmpty: { color: '#333' },
+  intakeTranscript: { fontSize: 13, color: '#555', fontStyle: 'italic', textAlign: 'center', paddingHorizontal: 8 },
+  intakeMic: { backgroundColor: '#6366f1', borderRadius: 60, width: 120, height: 120, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  intakeMicActive: { backgroundColor: '#ef4444', transform: [{ scale: 1.08 }] },
+  intakeMicIcon: { fontSize: 36 },
+  intakeMicLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', textAlign: 'center' },
+  intakeError: { color: '#f87171', fontSize: 13, textAlign: 'center' },
 
   contextChip: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginBottom: 6, backgroundColor: '#1a1a2e', borderRadius: 12, padding: 10, borderLeftWidth: 3, borderLeftColor: '#6366f1', gap: 8 },
   contextChipInner: { flex: 1 },
