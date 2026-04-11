@@ -34,6 +34,7 @@ data/memory/*.md
 # ── Tooling / internal ─────────────────────────────────
 .vibe/tasks/
 .claude/rules/
+.claude/scheduled_tasks.lock
 .mcp.json
 HANDOFF.md
 *.shortcut
