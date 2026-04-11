@@ -2,8 +2,9 @@
 
 ## What V.I.T.A.L is
 
-V.I.T.A.L (Voice-Integrated Tracker & Adaptive Listener) is a **proactive life coach with persistent memory** built on wearable health data. One brain, one memory spine, three user-facing surfaces:
+V.I.T.A.L (Voice-Integrated Tracker & Adaptive Listener) is a **proactive life coach with persistent memory** built on wearable health data. One brain, one memory spine, three durable user-facing surfaces + a one-time vocal onboarding:
 
+0. **Vocal onboarding (Surface 0, one-time)** — ~15 spoken questions on first run, seeds the memory file (Baselines + Context)
 1. **Morning brief** — proactive daily ritual (diagnosis + memory callback + adaptive protocol + one question)
 2. **Stats dashboard + chat with your data** — on-demand understanding, each stat has an LLM insight
 3. **Memory-driven notifications** — silent nudges when a biometric deviates ≥2σ from the user's baseline
@@ -26,6 +27,8 @@ Every module's purpose and the invariants Vibe must respect.
 | `backend/guardrail.py` | Nebius Llama Guard safety check | Every LLM response (brief, chat, notifications) passes through before reaching the user. |
 | `backend/health_server.py` | FastAPI endpoints + SSE streaming + notification broadcast | SSE format: `event: {type}\ndata: {json}\n\n`. `patient.token` IS the Thryve `endUserId` IS the memory file key — one hex, no second lookup table. |
 | `backend/voxtral.py` | Voxtral STT + streaming TTS | Don't touch without an explicit task saying so. |
+| `backend/onboarding.py` | Vocal onboarding session (Surface 0) — start / answer / finalize | Session state is a module-level dict keyed by `endUserId`. `finalize()` writes the initial memory file via `memory.py` only. |
+| `backend/onboarding_questions.py` | 15-question bank from the Alan Precision questionnaire | Pure data module. Adding/removing a question is a one-line change — no logic, no side effects. |
 
 ## Memory schema
 
