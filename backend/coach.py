@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import UTC, date
 
 from mistralai.client import Mistral
 
@@ -40,6 +40,34 @@ class BriefPayload:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+@dataclass
+class DashboardStat:
+    """A single stat card on the dashboard: value + delta + LLM insight."""
+
+    metric: str
+    value: float
+    unit: str
+    delta_pct: float
+    insight: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class DashboardPayload:
+    """Response for GET /api/dashboard/{patient_id}."""
+
+    stats: list[DashboardStat]
+    generated_at: str
+
+    def to_dict(self) -> dict:
+        return {
+            "stats": [s.to_dict() for s in self.stats],
+            "generated_at": self.generated_at,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -236,3 +264,158 @@ async def record_user_reply(patient: PatientContext, reply: str) -> None:
     if len(replaced_once) == 2:
         new_body = f"status: {outcome}".join(replaced_once)
         path.write_text(content[:body_start] + new_body + content[body_end:])
+
+
+# ---------------------------------------------------------------------------
+# Dashboard insights (Surface 2)
+# ---------------------------------------------------------------------------
+
+# Watched metrics for the dashboard, with their display units.
+DASHBOARD_METRICS: list[tuple[str, str]] = [
+    ("hrv", "ms"),
+    ("resting_hr", "bpm"),
+    ("sleep_quality", "/100"),
+]
+
+
+def _parse_baseline_mean(user_id: str, metric: str) -> float | None:
+    """Parse the Baselines section and return the mean for `metric`, or None."""
+    import re
+
+    baselines = memory.read_section(user_id, memory.SECTION_BASELINES)
+    if not baselines:
+        return None
+    pattern = re.compile(rf"{re.escape(metric)}:\s*mean=([0-9.]+)")
+    match = pattern.search(baselines)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _compute_delta_pct(user_id: str, metric: str, current: float) -> float:
+    """Return the signed percentage change of `current` vs the stored baseline mean.
+
+    Returns 0.0 if no baseline exists for the metric.
+    """
+    mean = _parse_baseline_mean(user_id, metric)
+    if mean is None or mean == 0:
+        return 0.0
+    return round(((current - mean) / mean) * 100, 1)
+
+
+_DASHBOARD_SYSTEM_TEMPLATE = """\
+Tu es V.I.T.A.L. Tu composes des PHRASES D'INSIGHT pour chaque statistique affichee \
+sur le dashboard de l'utilisateur. Chaque phrase doit etre COURTE (1 phrase, max ~20 mots), \
+ancree dans la memoire personnelle de l'utilisateur, et utiliser sa baseline personnelle \
+au lieu de normes generales.
+
+MEMOIRE :
+{memory_blob}
+
+STATS ACTUELLES :
+{stats_block}
+
+FORMAT DE SORTIE (JSON strict) :
+Un objet avec une cle par metrique listee ci-dessus, chaque valeur etant la phrase d'insight. \
+Exemple :
+{{"hrv": "14% sous ta moyenne 14 jours, meme pattern que le 21 mars",
+  "resting_hr": "dans ta zone habituelle",
+  "sleep_quality": "nuit courte, probablement liee a la HRV basse"}}
+
+REGLES :
+- Pas de diagnostic medical.
+- Cite la memoire quand elle contient un evenement lie a la metrique.
+- Phrases courtes, conversationnelles, pas de markdown.
+- Reponds uniquement le JSON.
+"""
+
+
+def _build_dashboard_prompt(
+    patient: PatientContext,
+    stats_snapshot: list[tuple[str, float, float]],
+) -> list[dict]:
+    """Build the LLM prompt that returns one insight per watched metric."""
+    memory_blob = memory.read_all(patient.token)
+    stats_block = "\n".join(
+        f"- {metric}: {value} (delta vs baseline: {delta:+.1f}%)"
+        for metric, value, delta in stats_snapshot
+    )
+    system_content = _DASHBOARD_SYSTEM_TEMPLATE.format(
+        memory_blob=memory_blob,
+        stats_block=stats_block,
+    )
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": "Genere les insights du dashboard."},
+    ]
+
+
+async def generate_dashboard(
+    client: Mistral,
+    patient: PatientContext,
+) -> DashboardPayload:
+    """Build the dashboard payload for Surface 2's landing view."""
+    from datetime import datetime
+
+    memory.ensure_memory_file(patient.token)
+
+    session = SessionData()
+    try:
+        await prefetch_session(patient, session)
+    except Exception:
+        log.exception("prefetch_session failed during dashboard generation")
+
+    stats_snapshot: list[tuple[str, float, float]] = []
+    latest_values: dict[str, float] = {}
+    for metric, _unit in DASHBOARD_METRICS:
+        values = (session.vitals or {}).get(metric, [])
+        nums = [v["value"] for v in values if isinstance(v.get("value"), (int, float))]
+        if not nums:
+            continue
+        current = float(nums[-1])
+        delta = _compute_delta_pct(patient.token, metric, current)
+        latest_values[metric] = current
+        stats_snapshot.append((metric, current, delta))
+
+    if not stats_snapshot:
+        return DashboardPayload(
+            stats=[],
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+
+    messages = _build_dashboard_prompt(patient, stats_snapshot)
+
+    insights: dict[str, str] = {}
+    try:
+        response = client.chat.complete(
+            model=LLM_MODEL,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        insights = json.loads(response.choices[0].message.content)
+    except Exception:
+        log.exception("Dashboard insight LLM call failed")
+
+    stats: list[DashboardStat] = []
+    for metric, unit in DASHBOARD_METRICS:
+        if metric not in latest_values:
+            continue
+        current = latest_values[metric]
+        delta = _compute_delta_pct(patient.token, metric, current)
+        stats.append(
+            DashboardStat(
+                metric=metric,
+                value=current,
+                unit=unit,
+                delta_pct=delta,
+                insight=insights.get(metric, ""),
+            )
+        )
+
+    return DashboardPayload(
+        stats=stats,
+        generated_at=datetime.now(UTC).isoformat(),
+    )

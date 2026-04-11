@@ -528,6 +528,27 @@ async def post_coach_reply(req: ReplyRequest) -> dict:
     return {"ok": True, "stored": req.text}
 
 
+@app.get("/api/dashboard/{patient_id}")
+async def get_dashboard(patient_id: str) -> dict:
+    """Return the dashboard payload: stats + LLM-generated insights."""
+    patient = _PATIENTS_BY_ID.get(patient_id)
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Unknown patient")
+
+    patient_ctx = PatientContext(
+        token=patient.get("token", patient["id"]),
+        name=patient["name"],
+        age=patient.get("age"),
+    )
+
+    client = _get_mistral()
+
+    from backend import coach as _coach
+
+    payload = await _coach.generate_dashboard(client, patient_ctx)
+    return payload.to_dict()
+
+
 # ---------------------------------------------------------------------------
 # Legacy endpoints (kept for HealthKit + compat)
 # ---------------------------------------------------------------------------
