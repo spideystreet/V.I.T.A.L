@@ -8,71 +8,83 @@
 
 <p align="center">
   <strong>Voice-Integrated Tracker & Adaptive Listener</strong><br>
-  <em>The first health checkup that listens to how you feel AND measures what your body says.</em>
+  <em>The first proactive health coach that actually remembers you.</em>
 </p>
 
 <p align="center">
   <img src="https://badgen.net/badge/python/3.12+/3776AB?icon=pypi" alt="Python 3.12+">
-  <img src="https://badgen.net/badge/Swift/5.9+/F05138?icon=swift" alt="Swift 5.9+">
+  <img src="https://badgen.net/badge/voice/Voxtral/F05138" alt="Voice: Voxtral">
+  <img src="https://badgen.net/badge/brain/Mistral%20Small/FF7000" alt="Brain: Mistral Small">
   <img src="https://badgen.net/badge/license/MIT/green" alt="License: MIT">
-  <img src="https://badgen.net/badge/Apple%20Watch/supported/grey?icon=apple" alt="Apple Watch supported">
 </p>
 
 <p align="center">
   <a href="https://mistral.ai"><img src="public/badges/m-orange.svg" alt="Mistral AI" height="32"></a>
   &nbsp;&nbsp;
-  <img src="public/badges/apple-health-en.svg" alt="Works with Apple Health" height="32">
+  <a href="https://luma.com/t7rspaka"><img src="public/mockups/alanxmistral.png" alt="Alan × Mistral Hackathon" height="32"></a>
 </p>
 
 ---
 
-> Built for the [**Alan x Mistral AI Health Hack**](https://luma.com/t7rspaka) — April 11, 2026 in Paris.
+> Built for the [**Alan × Mistral AI Health Hack**](https://luma.com/t7rspaka) — April 11, 2026, Paris.
 
-<img src="public/mockups/alan_X.png" alt="Alan tweet: on a hâte de voir ça" width="560">
-
-## The problem
-
-Absenteeism costs French companies €120B/year. 36% of long-term sick leave is stress and burnout. Companies have no objective way to prevent it — existing health assessments rely on self-reported questionnaires that people fill once and forget.
-
-## The solution
-
-V.I.T.A.L is a vocal health checkup that crosses what you feel (your voice) with what your body measures (Apple Watch / HealthKit), to detect burnout before it happens.
-
-<p align="center">
-  <img src="public/mockups/demo-screenshot-3.png" alt="V.I.T.A.L demo" width="100%">
+<p align="left">
+  <img src="public/mockups/alan_X.png" alt="Alan tweet: on a hâte de voir ça" width="480">
 </p>
 
-→ **You talk** — "How am I doing this week?"
-→ **It measures** — HRV, heart rate, sleep, activity from your Watch
-→ **It crosses** — "You say you're fine but your HRV dropped from 48 to 22ms"
-→ **It acts** — "Want me to book a psychologist? It's covered by your plan."
+## Why
 
-Works with Apple Watch for full biometric data, or with iPhone Health app alone for users without a Watch.
+Burnout drains **€120B/year** from French companies. 36% of long-term sick leave is stress-related. Every health app shows you a dashboard. **None of them know you.**
 
-### Two rituals, no noise
+V.I.T.A.L reads your wearable, learns *your* baselines, and pushes adaptive protocols **before** problems become doctor visits.
 
-→ **Weekly vocal checkup** — a 2-minute structured conversation that crosses 7 days of biometrics with three subjective questions, producing a burnout score and one concrete action.
-→ **Smart daily nudge** — V.I.T.A.L only pings you when your body actually shows a stress signal (HRV drop, short sleep, elevated resting HR). No daily nag. You earn rewards only when listening to your body matters.
+<p align="center">
+  <img src="public/mockups/img1alan.png" alt="V.I.T.A.L demo" width="100%">
+</p>
+
+## What it does
+
+→ 🗣️ **Proactive morning brief** — it starts the conversation, voice-first, with a memory callback: *"3rd time this month after <4h deep sleep, same as mid-March."*  
+→ 💬 **Chat with your data** — tap any stat, the LLM explains the delta vs **your** baseline — never population averages.  
+→ 🔔 **Silent nudges** — pings only when your biometric drifts ≥2σ from your own baseline.  
+→ 🎙️ **Vocal onboarding** — free-speech form filling. Talk once, your dossier fills itself across 5 categories.  
+→ 📄 **Blood panel OCR** — drop a PDF, get 16 biomarkers extracted in seconds.  
+→ 🏥 **Specialist booking** — need an ORL? The coach books it. Alan-covered, 100% reimbursed.  
+→ 🎯 **Personalized challenges** — targets calibrated on *your* baseline, not generic 10k steps.  
+
+## The differentiator
+
+**Persistent memory** in the Openclaw / Hermes agent pattern. Every insight is grounded in the user's own history — `Baselines`, `Events`, `Protocols`, `Context`, `Challenges`, `Bookings` — all as append-only markdown the LLM reads and writes via function calls.
+
+```
+  Dashboard apps              V.I.T.A.L
+  ─────────────────          ─────────────────
+  "Your HRV is 45ms"    →    "Your HRV is 14% below your 14-day
+                              baseline. Last time this happened,
+                              zone-2 + magnesium fixed it in 4 days."
+```
+
+<p align="center">
+  <img src="public/mockups/Alan_image1.png" alt="V.I.T.A.L x Alan" width="100%">
+</p>
 
 ## Powered by
 
 <table>
   <tr>
-    <td align="center"><img src="public/models/mistral-small.png" alt="Mistral Small" width="48"><br><strong>Mistral Small 4</strong><br><sub>Reasoning + Tool Use</sub></td>
-    <td align="center"><img src="public/models/voxtral.png" alt="Voxtral" width="48"><br><strong>Voxtral</strong><br><sub>Voice (STT + TTS)</sub></td>
-    <td align="center"><img src="public/models/devstral.png" alt="Devstral" width="48"><br><strong>Devstral</strong><br><sub>Code companion</sub></td>
+    <td align="center"><img src="public/models/mistral-small.png" alt="Mistral Small" width="48"><br><strong>Mistral Small</strong><br><sub>Reasoning + 10 tools</sub></td>
+    <td align="center"><img src="public/models/voxtral.png" alt="Voxtral" width="48"><br><strong>Voxtral</strong><br><sub>STT + streaming TTS</sub></td>
+    <td align="center"><img src="public/models/devstral.png" alt="Devstral" width="48"><br><strong>Mistral OCR</strong><br><sub>Blood panel parsing</sub></td>
   </tr>
 </table>
 
-## Health metrics
+## Stack
 
-20 metrics across 5 categories — vitals, activity, sleep, environment, mindfulness.  
-See [docs/health-metrics.md](docs/health-metrics.md) for the full dictionary.
+`FastAPI` · `Mistral Small` + 10 function-calling tools · `Voxtral` STT/TTS · `Mistral OCR` · `Nebius Llama Guard` safety · `Thryve` (22 wearables, 20 metrics) · `Expo` mobile
 
 ## Privacy
 
-Zero personal identifiers sent to the LLM — only anonymous aggregated metrics.  
-See [docs/privacy-rgpd.md](docs/privacy-rgpd.md).
+Zero personal identifiers sent to the LLM — only anonymous aggregated metrics. See [docs/privacy-rgpd.md](docs/privacy-rgpd.md).
 
 ## License
 

@@ -48,6 +48,7 @@ Configured in `.vibe/agents/` (copy to `~/.vibe/agents/` on first setup):
 | `vital` | Docs, general | `--agent vital` |
 | `vital-tests` | Tests (needs bash for pytest) | `--agent vital-tests` |
 | `vital-review` | Read-only review | `--agent vital-review` |
+| `vital-audit` | Code audit + scoped refactors (Python only) | `--agent vital-audit` |
 
 ## Task sizing
 
@@ -55,7 +56,8 @@ Configured in `.vibe/agents/` (copy to `~/.vibe/agents/` on first setup):
 |-----------|-----------|-----------|---------|
 | Docs (1 file) | 10 | $0.30 | "update docs/apple-shortcut-setup.md" |
 | Tests (1 module) | 15 | $0.50 | "write tests for health_store.py" |
-| Review (1 file) | 5 | $0.20 | "review vital/config.py for issues" |
+| Review (1 file) | 5 | $0.20 | "review backend/config.py for issues" |
+| Audit + refactor (1-2 files) | 10 | $0.40 | "audit backend/brain.py, fix error handling" |
 
 ## After vibe completes
 

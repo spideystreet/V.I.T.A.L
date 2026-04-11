@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from vital.health_store import (
+from backend.health_store import (
     get_latest,
     get_recent_raw,
     get_summary,
@@ -26,7 +26,7 @@ class TestInitDB:
         """Default metrics are seeded in metric_catalog."""
         import psycopg
 
-        from vital.config import DATABASE_URL
+        from backend.config import DATABASE_URL
 
         with psycopg.connect(DATABASE_URL) as conn:
             conn.execute(f"SET search_path TO {test_db}")
