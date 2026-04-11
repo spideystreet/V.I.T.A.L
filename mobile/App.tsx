@@ -248,10 +248,9 @@ function UploadScreen({ onSuccess, onCancel }: { onSuccess: () => void; onCancel
       setStatus('loading');
 
       const form = new FormData();
-      form.append('file', { uri: file.uri, name: file.name, type: 'application/pdf' } as any);
+      form.append('pdf', { uri: file.uri, name: file.name, type: 'application/pdf' } as any);
 
-      // TODO: replace with real endpoint when provided
-      const res = await fetch(`${API_BASE_URL}/api/blood-test/upload`, {
+      const res = await fetch(`${API_BASE_URL}/api/blood-panel/upload`, {
         method: 'POST',
         body: form,
       });
