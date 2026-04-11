@@ -22,6 +22,8 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
+from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -623,6 +625,101 @@ async def dev_fire_notification(req: FireNotificationRequest) -> dict:
 
     await _broadcast_notification(message.to_dict())
     return {"fired": True, "message": message.to_dict()}
+
+
+# ---------------------------------------------------------------------------
+# Onboarding endpoints (Surface 0 — one-time vocal onboarding)
+# ---------------------------------------------------------------------------
+
+from backend import onboarding as onboarding_module  # noqa: E402
+from backend.onboarding_questions import QUESTIONS as _ONBOARDING_QUESTIONS  # noqa: E402
+
+
+class OnboardingAnswerPayload(BaseModel):
+    question_id: str
+    value: Any
+
+
+def _resolve_patient_ctx(patient_id: str) -> PatientContext:
+    patient = _PATIENTS_BY_ID.get(patient_id)
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Unknown patient")
+    return PatientContext(
+        token=patient.get("token", patient["id"]),
+        name=patient["name"],
+        age=patient.get("age"),
+    )
+
+
+def _step_to_payload(step: onboarding_module.OnboardingStep) -> dict:
+    q = step.question
+    return {
+        "index": step.index,
+        "total": step.total,
+        "done": step.done,
+        "question": {
+            "id": q.id,
+            "section": q.section,
+            "text_fr": q.text_fr,
+            "text_en": q.text_en,
+            "field": q.field,
+            "type": q.type,
+            "enum_values": list(q.enum_values),
+        },
+    }
+
+
+@app.post("/api/onboarding/start/{patient_id}")
+async def onboarding_start(patient_id: str) -> dict:
+    patient_ctx = _resolve_patient_ctx(patient_id)
+    step = onboarding_module.start_session(patient_ctx.token)
+    return _step_to_payload(step)
+
+
+@app.post("/api/onboarding/answer/{patient_id}")
+async def onboarding_answer(patient_id: str, payload: OnboardingAnswerPayload) -> dict:
+    patient_ctx = _resolve_patient_ctx(patient_id)
+    try:
+        step = onboarding_module.record_answer(
+            patient_ctx.token, payload.question_id, payload.value
+        )
+    except onboarding_module.OnboardingError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return _step_to_payload(step)
+
+
+@app.post("/api/onboarding/finalize/{patient_id}")
+async def onboarding_finalize(patient_id: str) -> dict:
+    patient_ctx = _resolve_patient_ctx(patient_id)
+    try:
+        onboarding_module.finalize(patient_ctx.token)
+    except onboarding_module.OnboardingError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return {"ok": True, "memory_file": f"data/memory/{patient_ctx.token}.md"}
+
+
+@app.post("/dev/onboarding/seed/{patient_id}")
+async def dev_onboarding_seed(
+    patient_id: str,
+    seed_file: str = "pierre_onboarding.json",
+) -> dict:
+    """Fill remaining onboarding answers from a seed JSON, then finalize. Dev-only."""
+    patient_ctx = _resolve_patient_ctx(patient_id)
+    seed_path = _Path("data/seeds") / seed_file
+    if not seed_path.exists():
+        raise HTTPException(status_code=404, detail=f"seed file not found: {seed_path}")
+    seed = json.loads(seed_path.read_text())
+    if patient_ctx.token not in onboarding_module._SESSIONS:
+        onboarding_module.start_session(patient_ctx.token)
+    session = onboarding_module._SESSIONS[patient_ctx.token]
+    for q in _ONBOARDING_QUESTIONS:
+        if q.id not in session and q.field in seed:
+            session[q.id] = seed[q.field]
+    try:
+        onboarding_module.finalize(patient_ctx.token)
+    except onboarding_module.OnboardingError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return {"ok": True, "seeded_from": str(seed_path)}
 
 
 # ---------------------------------------------------------------------------
