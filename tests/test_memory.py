@@ -109,6 +109,30 @@ def test_append_entry_rejects_unknown_section(tmp_path, monkeypatch):
         memory.append_entry("patient-1", "Nope", "entry")
 
 
+def test_append_entry_handles_body_containing_section_header(tmp_path, monkeypatch):
+    """An entry whose text contains '## Events' must not break future section lookups.
+
+    Regression test: without line-anchored matching, find('## Events') would hit
+    inside the Baselines entry and corrupt subsequent reads/writes.
+    """
+    monkeypatch.setattr(memory, "MEMORY_DIR", tmp_path)
+    memory.ensure_memory_file("patient-1")
+    # An entry that mentions another section heading verbatim
+    memory.append_entry(
+        "patient-1",
+        memory.SECTION_BASELINES,
+        "note: user asked about '## Events' naming",
+    )
+    memory.append_entry("patient-1", memory.SECTION_EVENTS, "HRV drop")
+
+    baselines = memory.read_section("patient-1", memory.SECTION_BASELINES)
+    events = memory.read_section("patient-1", memory.SECTION_EVENTS)
+
+    assert "## Events" in baselines  # the note stays in Baselines
+    assert "HRV drop" in events
+    assert "HRV drop" not in baselines  # no cross-leak
+
+
 def test_read_all_returns_full_markdown(tmp_path, monkeypatch):
     """read_all returns the entire memory file as a string for LLM injection."""
     monkeypatch.setattr(memory, "MEMORY_DIR", tmp_path)
@@ -121,3 +145,47 @@ def test_read_all_returns_full_markdown(tmp_path, monkeypatch):
     assert "## Baselines" in blob
     assert "hrv: mean=52" in blob
     assert "training for marathon" in blob
+
+
+def test_format_baseline_produces_stable_string():
+    """format_baseline(metric, values) returns a deterministic one-liner."""
+    line = memory.format_baseline("hrv", [50, 52, 48, 55, 51, 53, 49], days=7)
+    # Mean = 51.1, stddev ~ 2.3
+    assert line.startswith("hrv: ")
+    assert "mean=51.1" in line
+    assert "n=7" in line
+    assert "window=7d" in line
+
+
+def test_format_baseline_rejects_empty_values():
+    with pytest.raises(ValueError, match="no values"):
+        memory.format_baseline("hrv", [], days=7)
+
+
+def test_upsert_baseline_replaces_existing_entry(tmp_path, monkeypatch):
+    """Writing a baseline for the same metric twice replaces the old entry."""
+    monkeypatch.setattr(memory, "MEMORY_DIR", tmp_path)
+    memory.ensure_memory_file("patient-1")
+
+    memory.upsert_baseline("patient-1", "hrv", [50, 52, 48], days=3)
+    memory.upsert_baseline("patient-1", "hrv", [60, 62, 58], days=3)
+
+    baselines = memory.read_section("patient-1", memory.SECTION_BASELINES)
+    assert "mean=60" in baselines
+    assert "mean=50" not in baselines
+    assert baselines.count("hrv:") == 1
+
+
+def test_upsert_baseline_preserves_other_metrics(tmp_path, monkeypatch):
+    """Upserting hrv does not touch resting_hr."""
+    monkeypatch.setattr(memory, "MEMORY_DIR", tmp_path)
+    memory.ensure_memory_file("patient-1")
+    memory.upsert_baseline("patient-1", "hrv", [50, 52, 48], days=3)
+    memory.upsert_baseline("patient-1", "resting_hr", [62, 64, 63], days=3)
+    memory.upsert_baseline("patient-1", "hrv", [70, 72, 68], days=3)
+
+    baselines = memory.read_section("patient-1", memory.SECTION_BASELINES)
+    assert "hrv:" in baselines
+    assert "resting_hr:" in baselines
+    assert "mean=70" in baselines
+    assert "mean=63" in baselines
