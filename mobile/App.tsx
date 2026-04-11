@@ -149,8 +149,7 @@ function VoiceIntake({ onDone }: { onDone: (firstName: string) => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      const jobLabel = fields.find((f) => f.key === 'job')?.value;
-      onDone(jobLabel ?? 'toi');
+      onDone('');
     } catch (e: any) { setErrorMsg(e.message); setPhase('error'); }
   }
 
@@ -320,7 +319,7 @@ function Dashboard({ onMetricPress, userName }: { onMetricPress: (label: string,
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
       <ScrollView contentContainerStyle={styles.dashContent}>
-        <Text style={styles.greeting}>Bonjour {userName || 'toi'} 👋</Text>
+        <Text style={styles.greeting}>Bonjour 👋</Text>
         <View style={styles.insightBox}>
           <Text style={styles.insightText}>😴 Vous avez mal dormi cette nuit. Votre HRV est en baisse et votre niveau de stress est élevé.</Text>
         </View>
