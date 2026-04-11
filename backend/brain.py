@@ -11,6 +11,7 @@ from statistics import mean
 
 from mistralai.client import Mistral
 
+from backend import memory
 from backend.burnout import BurnoutResult, compute_burnout
 from backend.config import LLM_MODEL
 from backend.thryve import METRIC_CODES, ThryveClient
@@ -95,7 +96,13 @@ Pas de conseils vagues.
 
 OUTILS:
 - Tu as 9 outils pour consulter les donnees de sante, calculer le burnout, \
-et agir (consultation, memoire). Utilise-les quand la question le necessite.
+agir (consultation), et lire/ecrire la memoire persistante de l'utilisateur. \
+Utilise-les quand la question le necessite.
+- MEMOIRE: tu disposes d'une memoire persistante (read_memory, append_memory). \
+Quand l'utilisateur demande "pourquoi tu m'as alerte hier ?" ou "qu'est-ce que \
+tu avais propose la derniere fois ?", lis la section Events ou Protocols. \
+Quand l'utilisateur partage un objectif ou un contexte de vie important, \
+sauvegarde-le avec append_memory pour les prochains matins.
 - Pour une question generale, les donnees deja fournies ci-dessous suffisent.
 
 REGLES:
@@ -107,27 +114,9 @@ de consulter un professionnel de sante ou un psychologue.
 - JAMAIS de markdown (pas de **, pas de #, pas de listes a puces). \
 Ta reponse est lue a voix haute, le formatage est interdit.
 
-{checkup_block}
 --- DONNEES SANTE ({data_window}) ---
 {health_context}
 """
-
-WEEKLY_CHECKUP_BLOCK = """\
-MODE CHECKUP HEBDOMADAIRE:
-Tu demarres le rituel hebdomadaire de V.I.T.A.L. Deroule cette structure, \
-une etape a la fois, en attendant la reponse de l'utilisateur entre chaque question :
-1. Salue brievement et resume la semaine en UNE phrase en citant 2-3 chiffres cles \
-(HRV moyenne, sommeil, score burnout). Appelle get_vitals si besoin.
-2. Demande : "Sur une echelle de 1 a 10, ton niveau d'energie cette semaine ?"
-3. Demande : "Qu'est-ce qui t'a le plus pese cette semaine ?"
-4. Demande : "Tu as reussi a decrocher du travail le soir ?"
-5. Synthese : croise les reponses avec le score burnout (appelle get_burnout_score), \
-nomme le pattern dominant (ex : "stress chronique leger"), donne le score sur 100 \
-et UNE recommandation concrete. Si signaux rouges persistants, propose book_consultation.
-Reste dans le style vocal court (3-4 phrases max par tour).
-"""
-
-NORMAL_BLOCK = ""
 
 # ---------------------------------------------------------------------------
 # Tool definitions (Mistral function calling format)
@@ -300,6 +289,54 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_memory",
+            "description": (
+                "Read a section of the user's persistent memory. "
+                "Sections: 'Baselines' (rolling per-metric stats), 'Events' "
+                "(past notifications and briefs), 'Protocols' (proposed protocols "
+                "and user acceptance), 'Context' (user-stated goals and context). "
+                "Use when the user asks about their history, why you nudged them, "
+                "or what you've suggested before."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "enum": ["Baselines", "Events", "Protocols", "Context"],
+                        "description": "Which memory section to read",
+                    },
+                },
+                "required": ["section"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "append_memory",
+            "description": (
+                "Store new user context discovered during conversation. "
+                "Use when the user shares a goal, a life event, or a subjective "
+                "feeling you should remember for future briefs (e.g. 'I'm starting "
+                "a new job next week', 'I always feel wired after meetings'). "
+                "Only use the 'Context' section for conversational learning."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entry": {
+                        "type": "string",
+                        "description": "The context to remember, one short sentence",
+                    },
+                },
+                "required": ["entry"],
+            },
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -314,6 +351,8 @@ TOOL_EMOTIONS: dict[str, str] = {
     "get_trend": "curious",
     "get_correlation": "thinking",
     "book_consultation": "encouraging",
+    "read_memory": "thinking",
+    "append_memory": "curious",
 }
 
 
@@ -402,6 +441,12 @@ def execute_tool(
         elif name == "book_consultation":
             result = _tool_book_consultation(args)
             emotion = "encouraging"
+
+        elif name == "read_memory":
+            result = _tool_read_memory(patient, args["section"])
+
+        elif name == "append_memory":
+            result = _tool_append_memory(patient, args["entry"])
 
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -662,6 +707,33 @@ def _tool_book_consultation(args: dict) -> dict:
     }
 
 
+def _tool_read_memory(patient: PatientContext, section: str) -> dict:
+    """Read a section of the user's persistent memory file."""
+    try:
+        body = memory.read_section(patient.token, section)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {
+        "section": section,
+        "content": body if body else "(empty)",
+    }
+
+
+def _tool_append_memory(patient: PatientContext, entry: str) -> dict:
+    """Append a user-context entry to persistent memory.
+
+    Prefixes the entry with today's date for later chronological ordering.
+    """
+    from datetime import date
+
+    dated = f"{date.today().isoformat()}: {entry}"
+    try:
+        memory.append_entry(patient.token, memory.SECTION_CONTEXT, dated)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"stored": dated}
+
+
 # ---------------------------------------------------------------------------
 # System message builder
 # ---------------------------------------------------------------------------
@@ -670,7 +742,6 @@ def _tool_book_consultation(args: dict) -> dict:
 def build_system_message(
     patient: PatientContext,
     session: SessionData,
-    weekly_checkup: bool = False,
 ) -> dict:
     """Build the system message with patient context and cached health data."""
     # Build profile block
@@ -718,15 +789,12 @@ def build_system_message(
     else:
         health_context = "\n".join(health_lines)
 
-    checkup_block = WEEKLY_CHECKUP_BLOCK if weekly_checkup else NORMAL_BLOCK
-
     return {
         "role": "system",
         "content": SYSTEM_TEMPLATE.format(
             user_profile=profile_str,
             health_context=health_context,
             data_window=data_window,
-            checkup_block=checkup_block,
         ),
     }
 

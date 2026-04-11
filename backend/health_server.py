@@ -198,7 +198,7 @@ async def start_checkup(req: StartCheckupRequest):
         age=patient.get("age"),
     )
     session_data = SessionData()
-    system_msg = build_system_message(patient_ctx, session_data, weekly_checkup=True)
+    system_msg = build_system_message(patient_ctx, session_data)
 
     session = SessionState(
         session_id=session_id,
