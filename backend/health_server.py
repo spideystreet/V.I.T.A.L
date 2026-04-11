@@ -18,6 +18,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ from backend.config import (
     HEALTH_SERVER_HOST,
     HEALTH_SERVER_PORT,
     MISTRAL_API_KEY,
+    require_thryve_credentials,
 )
 from backend.guardrail import check_response
 from backend.health_store import init_db, insert_metrics
@@ -55,10 +57,21 @@ logger = logging.getLogger("backend.server")
 # Patient registry (hardcoded for hackathon demo)
 # ---------------------------------------------------------------------------
 
+# Pre-made Thryve data profile — see docs/thryve-hackathon-guide.md
+# Default: "Active Gym Guy" (Whoop) — rich HRV data fits the demo narrative.
+# Override via env var if a different profile is chosen at demo time.
+_DEMO_THRYVE_END_USER_ID = os.environ.get(
+    "VITAL_DEMO_THRYVE_TOKEN",
+    "2bfaa7e6f9455ceafa0a59fd5b80496c",
+)
+
 PATIENTS = [
-    {"id": "patient-1", "name": "Sophie Martin", "age": 34, "token": ""},
-    {"id": "patient-2", "name": "Lucas Dubois", "age": 28, "token": ""},
-    {"id": "patient-3", "name": "Emma Bernard", "age": 42, "token": ""},
+    {
+        "id": "patient-1",
+        "name": "Sophie Martin",  # Persona name — the Thryve profile is anonymous
+        "age": 34,
+        "token": _DEMO_THRYVE_END_USER_ID,
+    },
 ]
 
 _PATIENTS_BY_ID: dict[str, dict] = {p["id"]: p for p in PATIENTS}
@@ -123,6 +136,7 @@ def _get_thryve() -> ThryveClient:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    require_thryve_credentials()
     init_db()
     init_berries()
     logger.info("Database and berries ledger initialized")

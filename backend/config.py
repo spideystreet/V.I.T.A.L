@@ -16,7 +16,7 @@ THRYVE_USER = os.environ.get("THRYVE_USER", "")
 THRYVE_PASSWORD = os.environ.get("THRYVE_PASSWORD", "")
 THRYVE_APP_ID = os.environ.get("THRYVE_APP_ID", "")
 THRYVE_APP_SECRET = os.environ.get("THRYVE_APP_SECRET", "")
-THRYVE_BASE_URL = "https://api.thryve.de/v5"
+THRYVE_BASE_URL = os.environ.get("THRYVE_BASE_URL", "https://api-qa.thryve.de/v5")
 
 # --- Models ---
 STT_MODEL = "voxtral-mini-latest"
@@ -51,3 +51,26 @@ DATABASE_URL = (
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
     f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 )
+
+
+def require_thryve_credentials() -> None:
+    """Fail loudly at startup if Thryve credentials are missing.
+
+    Called from the FastAPI lifespan so the server refuses to boot without them.
+    """
+    missing = [
+        name
+        for name, value in [
+            ("THRYVE_USER", THRYVE_USER),
+            ("THRYVE_PASSWORD", THRYVE_PASSWORD),
+            ("THRYVE_APP_ID", THRYVE_APP_ID),
+            ("THRYVE_APP_SECRET", THRYVE_APP_SECRET),
+        ]
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"Missing Thryve env vars: {', '.join(missing)}. "
+            "Copy .env.example to .env and fill them in. "
+            "Credentials are provided by the hackathon organizer."
+        )
