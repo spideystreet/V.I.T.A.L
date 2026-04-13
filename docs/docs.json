@@ -15,6 +15,12 @@
         "pages": [
           "introduction"
         ]
+      },
+      {
+        "group": "References",
+        "pages": [
+          "resources"
+        ]
       }
     ]
   },
