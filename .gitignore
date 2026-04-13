@@ -18,6 +18,10 @@ docs/node_modules/
 docs/package.json
 docs/package-lock.json
 
+# Claude Code
+.claude/settings.local.json
+.claude/rules/authorship.md
+
 # IDE
 .vscode/
 .idea/
