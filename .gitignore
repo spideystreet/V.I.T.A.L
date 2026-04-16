@@ -21,6 +21,7 @@ docs/package-lock.json
 # Claude Code
 .claude/settings.local.json
 .claude/rules/authorship.md
+.mcp.json
 
 # IDE
 .vscode/
